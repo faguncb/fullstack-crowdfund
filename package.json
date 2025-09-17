@@ -11,9 +11,10 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "ethers": "^5.8.0",
-    "@nomiclabs/hardhat-ethers": "^2.2.3",
-    "@nomicfoundation/hardhat-toolbox": "^2.0.0"
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0",
+    "@nomiclabs/hardhat-ethers": "^2.2.3"
+  },
+  "dependencies": {
+    "ethers": "5.7.2"
   }
-
 }
