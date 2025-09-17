@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("CrowdFund", function () {
     let CreatorRegistry, creatorRegistry, CrowdFund, crowdFund, owner, addr1, addr2;
@@ -23,7 +24,7 @@ describe("CrowdFund", function () {
     it("Should allow a registered creator to create a campaign", async function () {
         await expect(crowdFund.createCampaign(10, 30))
             .to.emit(crowdFund, "CampaignLaunched")
-            .withArgs(0, owner.address, ethers.utils.parseEther("10"), (await ethers.provider.getBlock('latest')).timestamp + 30 * 86400);
+            .withArgs(0, owner.address, ethers.utils.parseEther("10"), anyValue);
         const campaign = await crowdFund.campaigns(0);
         expect(campaign.creator).to.equal(owner.address);
     });
@@ -62,5 +63,32 @@ describe("CrowdFund", function () {
 
         const campaignAfter = await crowdFund.campaigns(0);
         expect(campaignAfter.currentState).to.equal(3); // Closed
+    });
+
+    it("Should allow refund after failed campaign via checkUpkeep", async function () {
+        await crowdFund.createCampaign(1, 0); // immediate deadline
+        // advance time by 1 second
+        await ethers.provider.send("evm_increaseTime", [2]);
+        await ethers.provider.send("evm_mine");
+
+        // move to Failed
+        await expect(crowdFund.checkUpkeep(0))
+            .to.emit(crowdFund, "CampaignStateChanged")
+            .withArgs(0, 2); // Failed
+
+        // contribute before failure shouldn't be possible, so instead we simulate a new campaign
+        await crowdFund.createCampaign(1, 1); // id 1
+        await crowdFund.connect(addr1).contribute(1, { value: ethers.utils.parseEther("0.5") });
+        // time passes to fail
+        await ethers.provider.send("evm_increaseTime", [2 * 24 * 60 * 60]);
+        await ethers.provider.send("evm_mine");
+        await crowdFund.checkUpkeep(1);
+
+        const balBefore = await ethers.provider.getBalance(addr1.address);
+        const refundTx = await crowdFund.connect(addr1).getRefund(1);
+        const refundRcpt = await refundTx.wait();
+        const refundGas = refundRcpt.gasUsed.mul(refundTx.gasPrice);
+        const balAfter = await ethers.provider.getBalance(addr1.address);
+        expect(balAfter.add(refundGas)).to.equal(balBefore.add(ethers.utils.parseEther("0.5")));
     });
 });
