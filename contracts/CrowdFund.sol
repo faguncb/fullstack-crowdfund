@@ -16,6 +16,11 @@ contract CrowdFund {
     // State machine for the campaign
     enum State { Fundraising, Successful, Failed, Closed }
 
+    struct Update {
+        string message;
+        uint256 timestamp;
+    }
+
     struct Campaign {
         address payable creator;
         uint256 goal; // in Wei
@@ -23,6 +28,7 @@ contract CrowdFund {
         uint256 totalRaised;
         State currentState;
         mapping(address => uint256) contributions;
+        Update[] updates;
     }
 
     ICreatorRegistry public registry;
@@ -34,6 +40,7 @@ contract CrowdFund {
     event FundsWithdrawn(uint256 indexed campaignId, uint256 amount);
     event RefundIssued(uint256 indexed campaignId, address indexed contributor, uint256 amount);
     event CampaignStateChanged(uint256 indexed campaignId, State newState);
+    event CampaignUpdatePosted(uint256 indexed campaignId, string message, uint256 timestamp);
 
     constructor(address _registryAddress) {
         registry = ICreatorRegistry(_registryAddress);
@@ -132,8 +139,35 @@ contract CrowdFund {
         require(success, "Refund failed");
     }
 
+    /**
+     * @dev Allows the creator to post an update to their campaign.
+     */
+    function postUpdate(uint256 _campaignId, string calldata _message) external {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(msg.sender == campaign.creator, "Only the creator can post updates");
+        require(bytes(_message).length > 0, "Update message cannot be empty");
+        require(bytes(_message).length <= 500, "Update message too long");
+
+        campaign.updates.push(Update({
+            message: _message,
+            timestamp: block.timestamp
+        }));
+
+        emit CampaignUpdatePosted(_campaignId, _message, block.timestamp);
+    }
+
     // --- View Functions ---
     function getCampaignCount() external view returns (uint256) {
         return campaigns.length;
+    }
+
+    function getUpdateCount(uint256 _campaignId) external view returns (uint256) {
+        return campaigns[_campaignId].updates.length;
+    }
+
+    function getUpdate(uint256 _campaignId, uint256 _updateIndex) external view returns (string memory message, uint256 timestamp) {
+        require(_updateIndex < campaigns[_campaignId].updates.length, "Update index out of bounds");
+        Update storage update = campaigns[_campaignId].updates[_updateIndex];
+        return (update.message, update.timestamp);
     }
 }
