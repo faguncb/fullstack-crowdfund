@@ -91,4 +91,68 @@ describe("CrowdFund", function () {
         const balAfter = await ethers.provider.getBalance(addr1.address);
         expect(balAfter.add(refundGas)).to.equal(balBefore.add(ethers.utils.parseEther("0.5")));
     });
+
+    describe("Campaign Updates", function () {
+        it("Should allow creator to post updates", async function () {
+            await crowdFund.createCampaign(10, 30); // Campaign ID 0
+            const updateMessage = "First milestone achieved!";
+            
+            await expect(crowdFund.postUpdate(0, updateMessage))
+                .to.emit(crowdFund, "CampaignUpdatePosted")
+                .withArgs(0, updateMessage, anyValue);
+
+            const updateCount = await crowdFund.getUpdateCount(0);
+            expect(updateCount).to.equal(1);
+
+            const [message, timestamp] = await crowdFund.getUpdate(0, 0);
+            expect(message).to.equal(updateMessage);
+            expect(timestamp).to.be.gt(0);
+        });
+
+        it("Should prevent non-creator from posting updates", async function () {
+            await crowdFund.createCampaign(10, 30); // Campaign ID 0
+            await expect(crowdFund.connect(addr2).postUpdate(0, "Unauthorized update"))
+                .to.be.revertedWith("Only the creator can post updates");
+        });
+
+        it("Should reject empty update messages", async function () {
+            await crowdFund.createCampaign(10, 30);
+            await expect(crowdFund.postUpdate(0, ""))
+                .to.be.revertedWith("Update message cannot be empty");
+        });
+
+        it("Should reject updates longer than 500 characters", async function () {
+            await crowdFund.createCampaign(10, 30);
+            const longMessage = "a".repeat(501);
+            await expect(crowdFund.postUpdate(0, longMessage))
+                .to.be.revertedWith("Update message too long");
+        });
+
+        it("Should allow multiple updates in chronological order", async function () {
+            await crowdFund.createCampaign(10, 30);
+            
+            await crowdFund.postUpdate(0, "Update 1");
+            await crowdFund.postUpdate(0, "Update 2");
+            await crowdFund.postUpdate(0, "Update 3");
+
+            const updateCount = await crowdFund.getUpdateCount(0);
+            expect(updateCount).to.equal(3);
+
+            const [msg1] = await crowdFund.getUpdate(0, 0);
+            const [msg2] = await crowdFund.getUpdate(0, 1);
+            const [msg3] = await crowdFund.getUpdate(0, 2);
+
+            expect(msg1).to.equal("Update 1");
+            expect(msg2).to.equal("Update 2");
+            expect(msg3).to.equal("Update 3");
+        });
+
+        it("Should revert when accessing invalid update index", async function () {
+            await crowdFund.createCampaign(10, 30);
+            await crowdFund.postUpdate(0, "Single update");
+            
+            await expect(crowdFund.getUpdate(0, 1))
+                .to.be.revertedWith("Update index out of bounds");
+        });
+    });
 });
